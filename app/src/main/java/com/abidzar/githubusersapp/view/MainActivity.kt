@@ -18,31 +18,37 @@ import com.abidzar.githubusersapp.view.adapter.UserListAdapter
 import com.abidzar.githubusersapp.viewmodel.UserViewModel
 import com.abidzar.githubusersapp.viewmodel.UserViewModelFactory
 import kotlinx.android.synthetic.main.activity_main.*
+import android.net.NetworkInfo
+
+import android.net.ConnectivityManager
+
 
 class MainActivity : AppCompatActivity() {
 
     val TAG = "UserList"
     lateinit var viewModel: UserViewModel
     lateinit var userListAdapter: UserListAdapter
+    val linearLayoutManager = LinearLayoutManager(this)
+    lateinit var userList: ArrayList<UsersResponseItem>
+
     var id_since = 0
     var isLoading = false
     var per_page = 10
     var page_count = 0
-    val linearLayoutManager = LinearLayoutManager(this)
-
-    lateinit var userList: ArrayList<UsersResponseItem>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
-
         supportActionBar?.hide()
 
         setUpViewModel()
 
-        viewModel.getUsers(id_since)
+        if (isConnectedToInternet())
+            viewModel.getUsers(id_since)
+        else
+            showError(1)
 
         viewModel.userList.observe(this, Observer { response ->
             when (response) {
@@ -59,10 +65,8 @@ class MainActivity : AppCompatActivity() {
 
                             setUpRecyclerView()
 
-
                         } else {
                             userList.addAll(userResponse)
-
                         }
 
                         val lastPosition = userResponse.size - 1
@@ -96,12 +100,17 @@ class MainActivity : AppCompatActivity() {
 
                         swipeRefresh.isRefreshing = false
 
-                        var detailToast : String = "Avatar Url : \t" + userDetailResponse.avatar_url + "\n"
-                        detailToast = detailToast + "Username : \t" +userDetailResponse.login + "\n"
-                        detailToast = detailToast + "Id : \t" +userDetailResponse.id.toString() + "\n"
-                        detailToast = detailToast + "Email : \t" + userDetailResponse.email + "\n"
-                        detailToast = detailToast + "Location : \t" + userDetailResponse.location + "\n"
-                        detailToast = detailToast + "Created At : \t" + userDetailResponse.created_at + "\n"
+                        var detailToast: String =
+                            "Avatar Url\t : \t" + userDetailResponse.avatar_url + "\n"
+                        detailToast =
+                            detailToast + "Username\t : \t" + userDetailResponse.login + "\n"
+                        detailToast =
+                            detailToast + "Id\t : \t" + userDetailResponse.id.toString() + "\n"
+                        detailToast = detailToast + "Email\t : \t" + userDetailResponse.email + "\n"
+                        detailToast =
+                            detailToast + "Location\t : \t" + userDetailResponse.location + "\n"
+                        detailToast =
+                            detailToast + "Created At\t : \t" + userDetailResponse.created_at + "\n"
 
                         val toast = Toast.makeText(this, detailToast, Toast.LENGTH_LONG)
                         toast.show()
@@ -128,8 +137,18 @@ class MainActivity : AppCompatActivity() {
                 val isLastPosition = countItem.minus(1) == lastVisiblePosition
                 if (!isLoading && isLastPosition && page_count == per_page) {
 
-                    id_since?.let { viewModel.getUsers(it) }
-                    isLoading = true
+                    if (isConnectedToInternet()) {
+                        id_since?.let { viewModel.getUsers(it) }
+                        isLoading = true
+                    } else {
+                        swipeRefresh.isRefreshing = false
+                        Toast.makeText(
+                            this@MainActivity, "Oops, There is something went wrong. Check your internet connection \n" +
+                                    "\n" +
+                                    "Please Swipe Down To Refresh", Toast.LENGTH_LONG
+                        ).show()
+                    }
+
 
                 }
             }
@@ -137,8 +156,23 @@ class MainActivity : AppCompatActivity() {
         })
 
         swipeRefresh.setOnRefreshListener {
-            id_since = 0
-            viewModel.getUsers(id_since)
+            if (isConnectedToInternet()) {
+                id_since = 0
+                viewModel.getUsers(id_since)
+            } else {
+                swipeRefresh.isRefreshing = false
+                if (this::userList.isInitialized) {
+                    Toast.makeText(
+                        this@MainActivity, "Oops, There is something went wrong. Check your internet connection \n" +
+                                "\n" +
+                                "Please Swipe Down To Refresh", Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    showError(1)
+                }
+            }
+
+
         }
 
     }
@@ -158,7 +192,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         userListAdapter.setOnItemClickListener {
-            viewModel.getUserDetail(it.login)
+            if (isConnectedToInternet()) {
+                viewModel.getUserDetail(it.login)
+            } else {
+                swipeRefresh.isRefreshing = false
+                Toast.makeText(
+                    this@MainActivity, "Oops, There is something went wrong. Check your internet connection \n" +
+                            "\n" +
+                            "Please Swipe Down To Refresh", Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
@@ -186,5 +229,15 @@ class MainActivity : AppCompatActivity() {
 
         swipeRefresh.isRefreshing = true
 
+    }
+
+    private fun isConnectedToInternet(): Boolean {
+        val connectivity =
+            applicationContext.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val info = connectivity.allNetworkInfo
+        for (i in info.indices) if (info[i].state == NetworkInfo.State.CONNECTED) {
+            return true
+        }
+        return false
     }
 }
